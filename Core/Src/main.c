@@ -2,7 +2,20 @@
 /**
  ******************************************************************************
  * @file           : main.c
- * @brief          : Main program body
+ * @brief          : DCar_OpenSource 小车主程序入口与系统时钟配置。
+ *
+ * 本文件由 STM32CubeMX/Keil MDK 工程生成框架并加入用户初始化逻辑，
+ * 完成 HAL、系统时钟、GPIO、DMA、TIM、USART、SPI 以及小车控制模块初始化，
+ * 随后在 while(1) 中持续调用 Loop_Run() 执行分频任务调度。
+ *
+ * 硬件平台 : STM32F407VETx，ARM Cortex-M4F 内核
+ * 开发环境 : Keil uVision / MDK-ARM，STM32CubeMX HAL 工程
+ * 晶振频率 : HSE 8 MHz
+ * 系统主频 : 168 MHz，AHB=168 MHz，APB1=42 MHz，APB2=84 MHz
+ * 作者     : DCar_OpenSource
+ * 日期     : 2026-05-10
+ * 版本     : v1.0
+ * 修改记录 : v1.0 增加中文工程注释，不修改代码逻辑
  ******************************************************************************
  * @attention
  *
@@ -17,6 +30,14 @@
  */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
+/* 头文件说明：
+ * main.h  : 全局 GPIO 宏、Error_Handler() 声明、HAL 总头文件入口。
+ * dma.h   : MX_DMA_Init()，配置 USART1_RX 使用的 DMA2_Stream2。
+ * spi.h   : MX_SPI2_Init() 和 hspi2，用于 ICM20602 通信。
+ * tim.h   : MX_TIMx_Init() 和 htim2/3/4/5/6/8，提供编码器、定时中断和 PWM。
+ * usart.h : MX_UART/USART 初始化和 huart1/2/4，提供上位机、SBUS 和调试串口。
+ * gpio.h  : MX_GPIO_Init()，配置 LED、IMU CS、电机方向引脚等 GPIO。
+ */
 #include "main.h"
 #include "dma.h"
 #include "spi.h"
@@ -26,6 +47,17 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+/* 用户模块头文件说明：
+ * imu.h              : ICM20602 通信和姿态解算。
+ * loop.h             : 主循环分频调度入口 Loop_Run()。
+ * motor_control.h    : 四电机速度闭环控制。
+ * move_control.h     : 相对位移位置控制。
+ * odometry.h         : 里程计估算。
+ * ps2_receiver.h     : PS2/SBUS 遥控接收。
+ * remote_to_motion.h : 遥控/手动速度到四轮运动解耦。
+ * uart4_debug.h      : UART4 调试输出接口。
+ * usart1_control.h   : USART1 上位机协议解析。
+ */
 #include "imu.h"
 #include "loop.h"
 #include "motor_control.h"
@@ -72,9 +104,17 @@ void SystemClock_Config(void);
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
+ * @brief  应用程序入口函数。
+ * @param  无。
+ * @retval int：嵌入式裸机程序通常不返回；若返回，值由 C 运行库处理。
+ * @note   初始化顺序：
+ *         1. HAL_Init() 复位外设状态、初始化 Flash 接口和 SysTick。
+ *         2. SystemClock_Config() 配置 168 MHz 系统时钟。
+ *         3. 初始化 CubeMX 配置的外设。
+ *         4. 初始化上层控制模块。
+ *         5. 在 while(1) 中调用 Loop_Run()。
+ *         WARNING：电机控制模块会启动 TIM6 中断和 TIM8 PWM，调试时应确认电机供电安全。
+ */
 int main(void)
 {
 
@@ -119,10 +159,10 @@ int main(void)
   /* 电机 PID 速度闭环初始化 (编码器 + PID + PWM) */
   MotorControl_Init();
 
-  /* PS2 遥控器接收模块初始化 (PA3) */
+  /* PS2/SBUS 遥控器接收模块初始化 (PA3/USART2_RX)。 */
   PS2_Receiver_Init();
 
-  /* 遥控转运动模块初始化 */
+  /* 遥控/手动速度到运动解耦模块初始化。 */
   RemoteToMotion_Init();
 
   /* 里程计初始化 */
@@ -133,10 +173,10 @@ int main(void)
 
   /* ICM20602 通信检查测试 */
   if (ICM20602_Check()) {
-    /* 通信正常：LED0 亮 */
+    /* 通信正常：LED0 亮（本硬件 LED 低电平有效，推测配置）。 */
     HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_RESET);
  } else {
-    /* 通信失败：LED0 灭 (或者可以在这里添加报错提示) */
+    /* 通信失败：LED0 灭；可在这里添加蜂鸣器、串口打印等错误提示。 */
     HAL_GPIO_WritePin(LED0_GPIO_Port, LED0_Pin, GPIO_PIN_SET);
   }
 	
@@ -149,8 +189,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    /* 任务分频调度：1kHz IMU | 100Hz 运动控制 | 50Hz 调试输出 */
-    /* 详见 Core/Src/loop.c */
+    /* 任务分频调度：1 kHz IMU | 100 Hz 运动控制 | 50 Hz 调试输出。 */
+    /* 详见 Core/Src/loop.c。 */
     Loop_Run();
 	
   }
@@ -158,9 +198,17 @@ int main(void)
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+ * @brief  配置系统时钟到 168 MHz。
+ * @param  无。
+ * @retval 无。
+ * @note   时钟树配置：
+ *         HSE=8 MHz，PLL_M=4 -> PLL 输入 2 MHz；
+ *         PLL_N=168 -> VCO=336 MHz；
+ *         PLL_P=2 -> SYSCLK=168 MHz；
+ *         AHB=168 MHz，APB1=42 MHz，APB2=84 MHz。
+ *         FLASH_LATENCY_5 对应 168 MHz 下的 Flash 等待周期。
+ *         WARNING：HSE 外部晶振失效会导致 HAL_RCC_OscConfig() 失败并进入 Error_Handler()。
+ */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -204,7 +252,11 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 /**
- * @brief  重定向 printf 到 UART4
+ * @brief  重定向 printf 的单字符输出到 UART4。
+ * @param  ch：待发送字符，低 8 位有效。
+ * @retval int：返回输入字符 ch，符合 C 库 putchar 约定。
+ * @note   使用 HAL_UART_Transmit() 阻塞发送 1 字节，超时时间 10 ms。
+ *         WARNING：不建议在高频中断中调用 printf，可能造成实时性问题。
  */
 int __io_putchar(int ch) {
   HAL_UART_Transmit(&huart4, (uint8_t *)&ch, 1, 10);
@@ -213,9 +265,13 @@ int __io_putchar(int ch) {
 /* USER CODE END 4 */
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ * @brief  HAL 或系统初始化发生错误时的统一处理函数。
+ * @param  无。
+ * @retval 无。
+ * @note   当前实现关闭全局中断并停留在死循环，便于调试器定位错误现场。
+ *         WARNING：进入该函数后电机 PWM/方向输出的实际状态取决于错误发生时刻；
+ *         若要用于量产，应增加电机急停和错误指示。
+ */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
