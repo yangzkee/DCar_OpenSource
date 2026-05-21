@@ -322,6 +322,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     tick_10ms++;
     if (tick_10ms >= 10) {
       tick_10ms = 0;
+      /* 分频/PID 讲解重点：
+       * TIM6 是 1ms 硬件节拍；累计 10 次后执行一次 10ms 速度环。
+       * 这条链路和 loop.c 的 100Hz 控制决策不同，它负责稳定执行电机 PID。
+       */
       MotorControl_Update();   /* PID 速度环 */
     }
   }

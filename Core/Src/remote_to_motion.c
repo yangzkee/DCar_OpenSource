@@ -151,6 +151,11 @@ void Motion_HandleManual(float vx, float vy, float w, float current_yaw) {
                             (fabsf(vy) > MANUAL_CMD_DEADBAND_MMPS);
   uint8_t has_rotation = fabsf(w) > MANUAL_CMD_DEADBAND_MMPS;
 
+  /* 锁头代码讲解按三个状态讲：
+   * 1) 没有平移也没有旋转：退出锁头并停车；
+   * 2) 有手动旋转：用户接管 yaw，重置锁头目标；
+   * 3) 有平移但无旋转：保持 target_yaw，PID 输出纠偏 w。
+   */
   if (!has_translation && !has_rotation) {
     is_yaw_locked = 0;
     target_yaw = current_yaw;
@@ -168,6 +173,7 @@ void Motion_HandleManual(float vx, float vy, float w, float current_yaw) {
     /* 旋转指令为 0：进入/维持航向保持模式 */
     if (!is_yaw_locked) {
       is_yaw_locked = 1;
+      /* 第一次进入锁头时，把当前朝向记录为要保持的 target_yaw。 */
       target_yaw = current_yaw;
       PID_Reset(&yaw_pid);
     }
@@ -177,6 +183,7 @@ void Motion_HandleManual(float vx, float vy, float w, float current_yaw) {
     if (fabsf(yaw_error) < YAW_HOLD_DEADBAND_DEG) {
       w = 0.0f;
     } else {
+      /* 航向闭环核心：target_yaw - current_yaw -> PID -> 纠偏旋转速度 w。 */
       w = PID_Calc(&yaw_pid, target_yaw, current_yaw);
     }
   }

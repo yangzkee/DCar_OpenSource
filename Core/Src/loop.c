@@ -275,6 +275,10 @@ void Loop_Run(void) {
 
   uint32_t now = HAL_GetTick();
 
+  /* 分频代码讲解入口：
+   * Loop_Run() 被 while(1) 高频调用，但每个任务只在自己的周期到达时执行。
+   * 这里讲清“非阻塞分频”，不要和 HAL_Delay() 阻塞等待混在一起。
+   */
   if (now - last_1000hz >= 1) {
   last_1000hz = now; 
     LOOP_1000HZ();
@@ -282,11 +286,13 @@ void Loop_Run(void) {
 
   if (now - last_100hz >= 10) {
     last_100hz = now;
+    /* 100Hz 是控制决策层：串口/遥控输入、锁头 yaw、运动解耦。 */
     LOOP_100HZ();
   }
 
   if (now - last_50hz >= 20) {
     last_50hz = now;
+    /* 50Hz 当前主要是调试输出预留，默认不会参与核心控制链路。 */
     LOOP_50HZ();
   }
 }

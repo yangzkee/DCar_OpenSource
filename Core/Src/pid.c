@@ -67,26 +67,30 @@ float PID_Calc(PID_TypeDef *pid, float target, float current)
 {
   if (pid == NULL) return 0.0f;
 
+  /* PID 代码讲解入口：
+   * target 和 current 必须是同一种量纲。本工程的电机速度环在
+   * MotorControl_Update() 里先统一成 count/10ms，再进入这里比较。
+   */
   float error = target - current;
   float dt = (float)ENCODER_SAMPLE_MS / 1000.0f;  /* 采样周期(秒) */
 
-  /* P */
+  /* P 项：只看当前误差，误差越大，输出越大。 */
   float p_out = pid->Kp * error;
 
-  /* I */
+  /* I 项：累积历史误差，用 integral_max 防止长时间误差导致积分过大。 */
   pid->integral += error * dt;
   if (pid->integral > pid->integral_max) pid->integral = pid->integral_max;
   if (pid->integral < -pid->integral_max) pid->integral = -pid->integral_max;
   float i_out = pid->Ki * pid->integral;
 
-  /* D */
+  /* D 项：看误差变化趋势，用来抑制过冲；last_error 在本次计算后更新。 */
   float derivative = (error - pid->last_error) / dt;
   pid->last_error = error;
   float d_out = pid->Kd * derivative;
 
   float output = p_out + i_out + d_out;
 
-  /* 输出限幅 */
+  /* 输出限幅：电机速度环里这个输出最终会变成 TIM8 的 PWM 比较值。 */
   if (output > pid->out_max) output = pid->out_max;
   if (output < pid->out_min) output = pid->out_min;
 

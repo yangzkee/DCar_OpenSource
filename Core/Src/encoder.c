@@ -69,7 +69,10 @@ void Encoder_Init(void)
   memset(encoder_count_last, 0, sizeof(encoder_count_last));
   memset(encoder_speed, 0, sizeof(encoder_speed));
 
-  /* 启动编码器接口 */
+  /* 编码器代码讲解入口：
+   * 这四行只负责“开始数 AB 相脉冲”，真正的测速在 Encoder_UpdateSpeed()。
+   * 录课时按 TIM2/TIM3/TIM4/TIM5 -> 四个轮子的顺序讲清硬件映射。
+   */
   HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
   HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL);
@@ -108,12 +111,20 @@ uint16_t Encoder_GetCount(uint8_t motor_id)
 void Encoder_UpdateSpeed(void)
 {
   uint16_t raw[MOTOR_NUM];
+  /* 先在同一个 10ms 控制拍里读四个 CNT 快照。
+   * 讲解重点：TIMx 编码器模式已经在硬件里自动完成正反向计数，
+   * 软件这里只需要读取当前计数值，不需要手动判断 A/B 相先后。
+   */
   raw[ENC_M1] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim2);
   raw[ENC_M2] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim3);
   raw[ENC_M3] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim4);
   raw[ENC_M4] = (uint16_t)__HAL_TIM_GET_COUNTER(&htim5);
 
   for (uint8_t i = 0; i < MOTOR_NUM; i++) {
+    /* 录编码器代码讲解时按这条链路讲：
+     * raw CNT -> delta_count -> count/s -> mm/s。
+     * count_to_delta() 专门处理 16 位计数器跨 0 回绕的问题。
+     */
     int16_t delta = count_to_delta(raw[i], (uint16_t)encoder_count_last[i]);
     encoder_count[i] += delta;
     encoder_count_last[i] = raw[i];

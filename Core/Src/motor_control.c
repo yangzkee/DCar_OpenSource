@@ -173,6 +173,9 @@ static void Motor_SetPWM(uint8_t motor_id, int16_t pwm_val) {
  *         WARNING：调用前必须完成 MX_TIM2/3/4/5/6/8_Init() 和 MX_GPIO_Init()。
  */
 void MotorControl_Init(void) {
+  /* PID 代码讲解先讲初始化闭环三件套：
+   * 反馈 Encoder_Init()、节拍 TIM6、执行器 TIM8 PWM。
+   */
   Encoder_Init();
 
   /* 启动 TIM6 定时中断 (1ms)，用于 10ms 周期调用 MotorControl_Update */
@@ -252,10 +255,17 @@ void MotorControl_SetAllTargetSpeedMMps(float mm_s1, float mm_s2, float mm_s3,
  *         WARNING：该函数在定时中断链路中执行时，不应加入阻塞式串口打印。
  */
 void MotorControl_Update(void) {
+  /* PID 速度环主线：
+   * 1) 先更新编码器反馈；
+   * 2) target/current 都换成 count/10ms；
+   * 3) PID_Calc() 算出带符号 PWM；
+   * 4) Motor_SetPWM() 把 PWM 变成方向 GPIO + TIM8 占空比。
+   */
   Encoder_UpdateSpeed();
 
   for (uint8_t i = 0; i < 4; i++) {
     float current_speed = Encoder_GetSpeed(i) * MOTOR_DIR_INVERT(i);
+    /* 目标和实际都接近 0 时，不继续让 PID 积分，直接清状态并空载。 */
     if (fabsf(target_speed[i]) < MOTOR_TARGET_STOP_DEADBAND &&
         fabsf(current_speed) < MOTOR_SPEED_STOP_DEADBAND) {
       target_speed[i] = 0.0f;
@@ -266,6 +276,7 @@ void MotorControl_Update(void) {
     /* 转为每周期脉冲 (脉冲/10ms)，与参考工程量纲一致 */
     float target_delta = SPEED_TO_DELTA(target_speed[i]);
     float current_delta = SPEED_TO_DELTA(current_speed);
+    /* 这里才是真正的闭环比较：target_delta - current_delta。 */
     float out = PID_Calc(&motor_pid[i], target_delta, current_delta);
     Motor_SetPWM(i, (int16_t)out);
   }
