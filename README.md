@@ -121,9 +121,6 @@ make
 ./build.sh flash
 ```
 
-说明：
-`Makefile` 里当前写死了本地工具链路径 `/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin`，如果你的环境不同，需要先改成你自己的路径，或者让 `arm-none-eabi-*` 进入 `PATH`。
-
 建议：
 
 - `macOS`：推荐优先使用 `Makefile` / `build.sh` 这套方式，和当前仓库结构更匹配
